@@ -80,5 +80,6 @@ make fetch
 - `out/ssh`: the local QEMU SSH key pair
 - `out/qemu`: QEMU pid files and serial logs
 - `artifacts`: generated source and build manifests
+- `lab`: user directory
 
 No command in the setup scripts uses `sudo`. Missing host packages are reported by `check-host.sh` for the operator to install.
