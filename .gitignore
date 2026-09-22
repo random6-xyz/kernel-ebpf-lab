@@ -1,0 +1,13 @@
+# Generated source trees and build output
+sources/
+out/
+artifacts/
+
+# Local overrides and editor files
+.env
+*.swp
+*~
+.DS_Store
+
+# User
+AGENTS.md

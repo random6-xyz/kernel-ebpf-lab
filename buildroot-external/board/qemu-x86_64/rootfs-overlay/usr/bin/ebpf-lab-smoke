@@ -1,0 +1,36 @@
+#!/bin/sh
+
+set -eu
+
+printf 'guest=%s\n' "$(uname -a)"
+test -d /sys/fs/bpf
+test -d /sys/kernel/debug
+
+echo 'BPF filesystem paths are present.'
+if command -v bpftool >/dev/null 2>&1; then
+    probe_file="/tmp/ebpf-lab-bpftool.$$"
+    if bpftool feature probe kernel macros >"$probe_file" 2>&1; then
+        echo 'bpftool feature probe passed; first feature lines:'
+        head -n 40 "$probe_file"
+    else
+        rc=$?
+        cat "$probe_file"
+        rm -f "$probe_file"
+        exit "$rc"
+    fi
+    rm -f "$probe_file"
+
+    pin_path=/sys/fs/bpf/ebpf-lab-minimal
+    rm -f "$pin_path"
+    if bpftool prog load /root/minimal_tracepoint.bpf.o "$pin_path" type tracepoint; then
+        echo 'minimal tracepoint program load passed.'
+        bpftool prog show pinned "$pin_path" | head -n 8
+        rm -f "$pin_path"
+    else
+        rc=$?
+        echo "minimal tracepoint program load failed with status $rc" >&2
+        exit "$rc"
+    fi
+else
+    echo 'bpftool is not installed in this rootfs.'
+fi

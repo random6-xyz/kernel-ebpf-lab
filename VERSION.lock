@@ -1,0 +1,18 @@
+# Source and toolchain settings for the eBPF lab.
+# Keep this file stable and review changes to it with the same care as code.
+
+LINUX_SEED_DEFAULT="/home/rand/kernel-server/repo/linux"
+LINUX_BPF_REMOTE="https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf.git"
+LINUX_BPF_NEXT_REMOTE="https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-next.git"
+
+BUILDROOT_REMOTE="https://gitlab.com/buildroot.org/buildroot.git"
+BUILDROOT_REF="2025.02.1"
+
+QEMU_SYSTEM_X86_64="qemu-system-x86_64"
+QEMU_MACHINE="pc"
+QEMU_MEMORY="1024"
+QEMU_SMP="2"
+QEMU_SSH_PORT="2222"
+
+KERNEL_ARCH="x86_64"
+KERNEL_LLVM="1"
