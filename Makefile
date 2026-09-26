@@ -7,7 +7,7 @@ QEMU_KVM ?= auto
 
 export ROOT TREE JOBS SSH_PORT QEMU_KVM
 
-.PHONY: all check-host fetch bpf-object buildroot kernel image run stop test test-smoke clean distclean help
+.PHONY: all check-host fetch bpf-object buildroot kernel compile-commands image run stop test test-smoke clean distclean help
 
 all: help
 
@@ -26,6 +26,9 @@ buildroot: bpf-object
 kernel:
 	$(ROOT)/scripts/build-kernel.sh --tree $(TREE)
 
+compile-commands:
+	$(ROOT)/scripts/gen-compile-commands.sh --tree $(TREE)
+
 image: buildroot kernel
 
 run: image
@@ -40,6 +43,13 @@ test: image
 test-smoke: test
 
 clean:
+	@for tree in master bpf bpf-next; do \
+		source_db="$(ROOT)/sources/linux/$$tree/compile_commands.json"; \
+		expected_db="$(ROOT)/out/kernel/$$tree/compile_commands.json"; \
+		if [[ -L "$$source_db" && "$$(readlink -- "$$source_db")" == "$$expected_db" ]]; then \
+			rm -- "$$source_db"; \
+		fi; \
+	done
 	rm -rf $(ROOT)/out/kernel $(ROOT)/out/artifacts $(ROOT)/out/qemu
 
 # distclean intentionally preserves the downloaded source trees.
@@ -54,6 +64,7 @@ help:
 	  '  bpf-object                 Build the minimal BPF tracepoint object' \
 	  '  buildroot                  Build the QEMU root filesystem' \
 	  '  kernel TREE=<name>         Build master, bpf, or bpf-next' \
+	  '  compile-commands TREE=<name> Generate database after a kernel build' \
 	  '  image TREE=<name>          Build rootfs and kernel' \
 	  '  run TREE=<name>            Boot QEMU with serial console' \
 	  '  test TREE=<name>           Boot QEMU and run the guest smoke test' \
