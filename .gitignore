@@ -12,3 +12,4 @@ artifacts/
 # User
 AGENTS.md
 lab/
+.pi/
