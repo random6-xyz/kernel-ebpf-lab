@@ -38,6 +38,22 @@ if [[ ! -r "$TARGET_DIR/usr/lib/libsframe.so.1" ]]; then
     install -D -m 0755 "$libsframe" "$TARGET_DIR/usr/lib/libsframe.so.1"
 fi
 
+# Every built case is shipped so that a booted guest can be inspected without a
+# host round trip. The verifier collector transfers cases over SSH instead, so
+# new cases do not require rebuilding this root filesystem.
+BPF_DIR=${EBPF_LAB_BPF_DIR:-}
+if [[ -n "$BPF_DIR" ]]; then
+    [[ -d "$BPF_DIR" ]] || {
+        printf 'EBPF_LAB_BPF_DIR is not a directory: %s\n' "$BPF_DIR" >&2
+        exit 1
+    }
+    install -d -m 0755 "$TARGET_DIR/root/lab-bpf"
+    for object in "$BPF_DIR"/*.bpf.o; do
+        [[ -e "$object" ]] || continue
+        install -m 0644 "$object" "$TARGET_DIR/root/lab-bpf/"
+    done
+fi
+
 BPF_OBJECT=${EBPF_LAB_BPF_OBJECT:-}
 if [[ -z "$BPF_OBJECT" || ! -r "$BPF_OBJECT" ]]; then
     printf 'EBPF_LAB_BPF_OBJECT must point to a readable BPF object\n' >&2

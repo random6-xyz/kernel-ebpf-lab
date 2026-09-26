@@ -54,6 +54,57 @@ The existing `dev`, `test-dev`, and stale temporary worktrees are not copied int
 
 The test image uses Dropbear and a generated key at `out/ssh/lab_ed25519`. The SSH endpoint is `root@127.0.0.1:2222` by default. The guest smoke test probes BPF features with `bpftool` and loads the minimal tracepoint object from `/root/minimal_tracepoint.bpf.o`.
 
+## Verifier response collection
+
+Collect the verifier's own response for every case in `tests/bpf`:
+
+```bash
+make image TREE=master      # once: kernel and root filesystem
+make verifier TREE=master   # boot QEMU, transfer cases, collect reports
+```
+
+`make verifier` boots the guest, pushes each `out/bpf/*.bpf.o` over SSH, and runs
+`ebpf-lab-verifier` inside the guest. Because cases travel over SSH, adding or
+changing a case does not require rebuilding the root filesystem.
+
+### Case convention
+
+Each `tests/bpf/<name>.c` is a case and is compiled to `out/bpf/<name>.bpf.o`.
+An optional sidecar `tests/bpf/<name>.expect` declares the expected outcome:
+
+```
+accept              # default: the program must load
+reject              # the verifier must reject the program
+type=tracepoint     # optional bpftool program type
+```
+
+### How the verifier log is obtained
+
+`ebpf-lab-verifier` runs `bpftool -d prog load`, which makes bpftool request
+kernel verifier logging, so the log is captured for rejected loads as well as
+successful ones. The flag is probed at runtime and a plain `bpftool prog load` is
+used when the installed bpftool does not support it; libbpf still asks for the
+log after a failed attempt.
+
+The kernel only formats verifier messages into a log buffer when a log level is
+requested, so dmesg is recorded as surrounding kernel context and is not a
+verifier log source.
+
+### Outputs
+
+- `artifacts/verifier/<tree>/<program>.log`: full verifier report for one case
+- `artifacts/verifier/<tree>/summary.txt`: tree, guest kernel, source commit, and one line per case
+- `artifacts/qemu-<tree>-<port>.serial.log`: console log of the run
+
+`make verifier` exits non-zero when a case does not match its expectation.
+
+Another lab instance may already hold the default SSH port. Select a free one with
+`SSH_PORT`:
+
+```bash
+make verifier TREE=master SSH_PORT=2225
+```
+
 ## Source setup
 
 The source script accepts these optional variables:
@@ -76,10 +127,10 @@ make fetch
 - `sources/buildroot`: Buildroot source
 - `out/kernel/<tree>`: per-worktree kernel output
 - `out/buildroot/qemu-x86_64`: Buildroot output
-- `out/bpf/minimal_tracepoint.bpf.o`: minimal BPF smoke object
+- `out/bpf/*.bpf.o`: compiled `tests/bpf` cases
 - `out/ssh`: the local QEMU SSH key pair
 - `out/qemu`: QEMU pid files and serial logs
-- `artifacts`: generated source and build manifests
+- `artifacts`: generated source and build manifests, plus collected verifier reports
 - `lab`: user directory
 
 No command in the setup scripts uses `sudo`. Missing host packages are reported by `check-host.sh` for the operator to install.

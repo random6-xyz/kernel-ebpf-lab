@@ -48,8 +48,10 @@ QEMU_OUTPUT="$ROOT_DIR/out/qemu"
 # shellcheck disable=SC2034
 ARTIFACTS_OUTPUT="$ROOT_DIR/artifacts"
 
+# Diagnostics go to stderr: several helpers are called as $(helper) so that the
+# caller can capture the produced path, and any stdout write would corrupt it.
 log() {
-    printf '[%s] %s\n' "$(basename -- "$0")" "$*"
+    printf '[%s] %s\n' "$(basename -- "$0")" "$*" >&2
 }
 
 warn() {
@@ -109,6 +111,7 @@ ensure_ssh_key() {
         chmod 644 "$public_key"
     fi
 
+    # Keep this function's stdout limited to the key path; callers capture it.
     printf '%s\n' "$private_key"
 }
 

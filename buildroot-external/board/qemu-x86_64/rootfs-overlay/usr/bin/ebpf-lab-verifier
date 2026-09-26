@@ -1,0 +1,164 @@
+#!/bin/sh
+#
+# Load a BPF object inside the lab guest and report the verifier's response.
+#
+# Usage:
+#   ebpf-lab-verifier --object PATH [--expect accept|reject] [--type TYPE]
+#
+# The report goes to stdout and is meant to be captured verbatim by the host
+# side collector. Exit status is 0 when the observed result matches the
+# expectation, 1 when it does not, and 2 on usage or setup errors.
+
+set -u
+
+OBJECT=
+EXPECT=accept
+PROG_TYPE=
+KEEP_PIN=0
+
+usage() {
+    cat <<'EOF'
+Usage: ebpf-lab-verifier --object PATH [options]
+
+Options:
+  --object PATH             BPF object file to load (required).
+  --expect accept|reject    Expected verifier outcome (default: accept).
+  --type TYPE               Force the bpftool program type (e.g. tracepoint).
+  --keep-pin                Leave the program pinned after a successful load.
+  -h, --help                Show this help.
+EOF
+}
+
+die() {
+    printf 'ebpf-lab-verifier: error: %s\n' "$*" >&2
+    exit 2
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --object)
+            [ $# -ge 2 ] || die "--object requires a value"
+            OBJECT=$2
+            shift 2
+            ;;
+        --expect)
+            [ $# -ge 2 ] || die "--expect requires a value"
+            EXPECT=$2
+            shift 2
+            ;;
+        --type)
+            [ $# -ge 2 ] || die "--type requires a value"
+            PROG_TYPE=$2
+            shift 2
+            ;;
+        --keep-pin)
+            KEEP_PIN=1
+            shift
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        *)
+            die "unknown option: $1"
+            ;;
+    esac
+done
+
+[ -n "$OBJECT" ] || die "--object is required"
+[ -r "$OBJECT" ] || die "object file is not readable: $OBJECT"
+case "$EXPECT" in
+    accept | reject) ;;
+    *) die "--expect must be accept or reject" ;;
+esac
+command -v bpftool >/dev/null 2>&1 || die "bpftool is not installed in this image"
+
+# The lab init script mounts these at boot; repeat the work so the tool also
+# works from a manually started shell.
+mkdir -p /sys/fs/bpf /sys/kernel/debug 2>/dev/null || true
+mountpoint -q /sys/fs/bpf || mount -t bpf bpf /sys/fs/bpf 2>/dev/null || true
+mountpoint -q /sys/kernel/debug || mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null || true
+
+name=$(basename "$OBJECT")
+name=${name%.bpf.o}
+pin_path=/sys/fs/bpf/ebpf-lab-$name
+
+# The global -d flag makes bpftool request kernel verifier logging, which also
+# reports the log for programs that load successfully. Without it libbpf still
+# asks for the log after a failed attempt. Probe once so older builds work.
+log_mode=default
+if bpftool -d version >/dev/null 2>&1; then
+    log_mode=debug
+fi
+
+rm -f "$pin_path"
+
+printf '=== ebpf-lab-verifier ===\n'
+printf 'object=%s\n' "$OBJECT"
+printf 'program=%s\n' "$name"
+printf 'expect=%s\n' "$EXPECT"
+printf 'type=%s\n' "${PROG_TYPE:-auto}"
+printf 'kernel=%s\n' "$(uname -r)"
+printf 'bpftool_version=%s\n' "$(bpftool version 2>/dev/null | head -n 1)"
+printf 'bpftool_log_mode=%s\n' "$log_mode"
+
+set -- prog load "$OBJECT" "$pin_path"
+if [ -n "$PROG_TYPE" ]; then
+    set -- "$@" type "$PROG_TYPE"
+fi
+
+printf -- '--- verifier log ---\n'
+if [ "$log_mode" = debug ]; then
+    bpftool -d "$@" 2>&1
+else
+    bpftool "$@" 2>&1
+fi
+load_rc=$?
+printf -- '--- end verifier log ---\n'
+printf 'load_exit=%s\n' "$load_rc"
+
+# The verifier only formats its reasoning into a log buffer when a log level is
+# requested, so dmesg is recorded as surrounding kernel context, not as a
+# verifier log source.
+printf -- '--- dmesg tail (context only) ---\n'
+if command -v dmesg >/dev/null 2>&1; then
+    dmesg 2>/dev/null | tail -n 40
+else
+    printf 'dmesg is not available in this image\n'
+fi
+printf -- '--- end dmesg tail ---\n'
+
+verdict=FAIL
+reason=
+if [ "$EXPECT" = accept ]; then
+    if [ "$load_rc" -eq 0 ]; then
+        verdict=PASS
+        reason='program loaded'
+    else
+        reason='load failed but acceptance was expected'
+    fi
+else
+    if [ "$load_rc" -ne 0 ]; then
+        verdict=PASS
+        reason='load rejected as expected'
+    else
+        reason='load succeeded but rejection was expected'
+    fi
+fi
+
+if [ "$load_rc" -eq 0 ]; then
+    if [ "$KEEP_PIN" -eq 1 ]; then
+        printf 'pinned=%s\n' "$pin_path"
+    else
+        rm -f "$pin_path"
+    fi
+fi
+
+printf 'verdict=%s\n' "$verdict"
+printf 'reason=%s\n' "$reason"
+printf '=== end ebpf-lab-verifier ===\n'
+
+if [ "$verdict" = PASS ]; then
+    exit 0
+fi
+exit 1

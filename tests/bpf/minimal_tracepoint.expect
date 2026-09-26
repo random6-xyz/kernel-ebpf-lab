@@ -1,0 +1,3 @@
+# Expected verifier outcome for minimal_tracepoint.bpf.o
+accept
+type=tracepoint

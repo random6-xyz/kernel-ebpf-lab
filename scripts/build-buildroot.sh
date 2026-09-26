@@ -75,6 +75,7 @@ make -C "$BUILDROOT_ROOT" \
 log "building Buildroot rootfs"
 export EBPF_LAB_SSH_PUBLIC_KEY="$SSH_PUBLIC_KEY"
 export EBPF_LAB_BPF_OBJECT="$BPF_OBJECT"
+export EBPF_LAB_BPF_DIR="$ROOT_DIR/out/bpf"
 make -C "$BUILDROOT_ROOT" \
     O="$BUILDROOT_OUTPUT" \
     BR2_EXTERNAL="$EXT_ROOT" \

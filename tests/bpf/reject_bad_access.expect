@@ -1,0 +1,3 @@
+# Expected verifier outcome for reject_bad_access.bpf.o
+reject
+type=tracepoint
