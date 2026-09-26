@@ -124,13 +124,22 @@ make fetch
 ## Generated paths
 
 - `sources/linux/{master,bpf,bpf-next}`: Linux worktrees
+- `sources/linux/<tree>/compile_commands.json`: symlink to that tree's generated compile database
 - `sources/buildroot`: Buildroot source
-- `out/kernel/<tree>`: per-worktree kernel output
+- `out/kernel/<tree>`: per-worktree kernel output, including `compile_commands.json`
 - `out/buildroot/qemu-x86_64`: Buildroot output
 - `out/bpf/*.bpf.o`: compiled `tests/bpf` cases
 - `out/ssh`: the local QEMU SSH key pair
 - `out/qemu`: QEMU pid files and serial logs
 - `artifacts`: generated source and build manifests, plus collected verifier reports
 - `lab`: user directory
+
+Each successful `make kernel TREE=<tree>` generates a compile database from the existing kernel build and exposes it at the selected Linux worktree root. To regenerate it without rebuilding the kernel, run:
+
+```bash
+make compile-commands TREE=master
+```
+
+This target requires a completed kernel build for the selected tree. `make clean` removes the generated source-root symlink along with the kernel build output.
 
 No command in the setup scripts uses `sudo`. Missing host packages are reported by `check-host.sh` for the operator to install.

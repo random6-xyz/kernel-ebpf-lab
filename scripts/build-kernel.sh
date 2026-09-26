@@ -91,6 +91,8 @@ log "building kernel image for $TREE"
 KERNEL_IMAGE="$OUTPUT/arch/x86/boot/bzImage"
 [[ -f "$KERNEL_IMAGE" ]] || die "kernel image was not produced: $KERNEL_IMAGE"
 
+"$ROOT_DIR/scripts/gen-compile-commands.sh" --tree "$TREE"
+
 ensure_directory "$ARTIFACTS_OUTPUT"
 cp -- "$OUTPUT/.config" "$ARTIFACTS_OUTPUT/kernel-$TREE.config"
 printf '%s\n' "$KERNEL_IMAGE" > "$ARTIFACTS_OUTPUT/kernel-$TREE-image.path"
