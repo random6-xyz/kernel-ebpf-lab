@@ -1,0 +1,3 @@
+reject
+type=socket
+expect_log=invalid mem access

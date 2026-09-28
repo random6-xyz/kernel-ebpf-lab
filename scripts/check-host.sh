@@ -33,6 +33,10 @@ if [[ ! -r /dev/kvm ]]; then
     warn '/dev/kvm is not accessible; QEMU will use software emulation'
 fi
 
+if ! command -v gdb >/dev/null 2>&1; then
+    warn 'gdb is not installed; make gdb and scripts/gdb-session.sh will not work'
+fi
+
 printf 'Host prerequisites look complete.\n'
 printf 'clang=%s\n' "$(clang --version | head -n 1)"
 printf 'qemu=%s\n' "$(qemu-system-x86_64 --version | head -n 1)"

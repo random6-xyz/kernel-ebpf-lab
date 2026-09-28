@@ -56,6 +56,12 @@ The existing `dev`, `test-dev`, and stale temporary worktrees are not copied int
    make test TREE=master
    ```
 
+6. Attach gdb to a paused kernel (optional):
+
+   ```bash
+   make gdb TREE=master
+   ```
+
 The test image uses Dropbear and a generated key at `out/ssh/lab_ed25519`. The SSH endpoint is `root@127.0.0.1:2222` by default. The guest smoke test probes BPF features with `bpftool` and loads the minimal tracepoint object from `/root/minimal_tracepoint.bpf.o`.
 
 ## Buildroot toolchain
@@ -162,13 +168,39 @@ changing a case does not require rebuilding the root filesystem.
 
 ### Case convention
 
-Each `tests/bpf/<name>.c` is a case and is compiled to `out/bpf/<name>.bpf.o`.
+Each `tests/bpf/<name>.c` is a case and is compiled to `out/bpf/<name>.bpf.o`
+with clang. Each `tests/bpf/<name>.asm` is a raw program assembled to
+`out/bpf/<name>.bin` with `tools/bpfasm.py`. Raw cases are loaded by the static
+loader built from `tools/bpfload.c`; the loader is transferred over SSH like the
+cases, so raw cases need no rootfs rebuild either.
+
 An optional sidecar `tests/bpf/<name>.expect` declares the expected outcome:
 
+| Directive | Applies to | Meaning |
+|---|---|---|
+| `accept` / `reject` | both | expected load verdict (default: `accept`) |
+| `type=NAME` | both | program type: bpftool name for ELF cases, `bpfload` name or number for raw cases |
+| `expect_log=SUBSTRING` | both | the verifier log must contain SUBSTRING |
+| `map=SPEC` | raw | pass `bpfload --map SPEC` (repeatable) |
+| `run=N` | raw | run the program N times with `BPF_PROG_TEST_RUN` |
+| `expect_ret=VALUE` | raw | every test run return value must equal VALUE (implies `run=1`) |
+
+`#` starts a comment. Unknown directives are reported and ignored.
+
+A raw case is declared by an `.asm` file and its `.expect` sidecar:
+
 ```
-accept              # default: the program must load
-reject              # the verifier must reject the program
-type=tracepoint     # optional bpftool program type
+; tests/bpf/raw_ret42.asm
+r0 = 42
+exit
+```
+
+```
+# tests/bpf/raw_ret42.expect
+accept
+type=socket
+run=1
+expect_ret=42
 ```
 
 ### How the verifier log is obtained
@@ -183,10 +215,14 @@ The kernel only formats verifier messages into a log buffer when a log level is
 requested, so dmesg is recorded as surrounding kernel context and is not a
 verifier log source.
 
+Raw cases use `tools/bpfload.c` instead: it calls `bpf(BPF_PROG_LOAD)` directly
+with `log_level = 2`, so the full verifier log is captured for both accepted and
+rejected programs.
+
 ### Outputs
 
 - `artifacts/verifier/<tree>/<program>.log`: full verifier report for one case
-- `artifacts/verifier/<tree>/summary.txt`: tree, guest kernel, source commit, and one line per case
+- `artifacts/verifier/<tree>/summary.txt`: tree, guest kernel, source commit, and one line per case with kind, expected verdict, observed verdict, load exit, SSH exit, content assertion result, and log path
 - `artifacts/qemu-<tree>-<port>.serial.log`: console log of the run
 
 `make verifier` exits non-zero when a case does not match its expectation.
@@ -196,6 +232,78 @@ Another lab instance may already hold the default SSH port. Select a free one wi
 
 ```bash
 make verifier TREE=master SSH_PORT=2225
+```
+
+## Debug kernel profiles
+
+The baseline image includes DWARF5 debug info, BTF, and the kernel gdb scripts
+(`CONFIG_GDB_SCRIPTS`). Debug kernels are opt-in through `DEBUG`, which selects
+`configs/kernel/profiles/<name>.config` and builds into
+`out/kernel/<tree>-<name>`:
+
+```bash
+make kernel TREE=bpf-next DEBUG=kasan     # out/kernel/bpf-next-kasan
+make kernel TREE=bpf-next DEBUG=lockdep   # out/kernel/bpf-next-lockdep
+```
+
+- `kasan`: KASAN, KFENCE, UBSAN, debug object checks, `PANIC_ON_OOPS`, and
+  `BPF_JIT_ALWAYS_ON`.
+- `lockdep`: lockdep (`PROVE_LOCKING`, `PROVE_RCU`), `DEBUG_ATOMIC_SLEEP`,
+  spinlock/mutex/RWSEM checks, and `PANIC_ON_OOPS`. Boot with
+  `--append "panic_on_warn=1"` to turn lockdep reports into a panic.
+
+The profile is recorded in `artifacts/kernel-<tree>-<profile>.config` and
+`artifacts/kernel-<tree>-<profile>-image.path`.
+
+Only the configuration can be regenerated without building an image:
+
+```bash
+scripts/build-kernel.sh --tree master --profile kasan --config-only
+```
+
+`make compile-commands TREE=<tree> DEBUG=<profile>` generates the compile
+database for a profile build inside `out/kernel/<tree>-<profile>`; the source
+root symlink keeps pointing at the baseline build.
+
+## Attaching gdb
+
+`make gdb TREE=master` boots the selected image with a gdb stub, pauses the
+kernel before the first instruction, and attaches the host gdb with the matching
+`vmlinux` and the `lx-*` helpers. The kernel command line gains `nokaslr`, so
+the symbol addresses stay valid.
+
+While the CPU is still at the reset vector the kernel virtual addresses are not
+mapped yet, so early breakpoints must be hardware breakpoints (`hbreak`).
+Software breakpoints and the `lx-*` helpers that read target memory work once
+the kernel has started:
+
+```bash
+make gdb TREE=master
+(gdb) hbreak start_kernel       # hardware breakpoint before the kernel runs
+(gdb) continue
+(gdb) break bpf_check           # software breakpoints work once it is running
+(gdb) continue
+(gdb) bt
+(gdb) lx-dmesg
+```
+
+`DEBUG=<profile>` selects the build to debug (`make gdb TREE=bpf-next
+DEBUG=kasan`). The underlying script supports `--attach` to connect to a running
+boot instead of pausing it, and `--keep` to leave QEMU running after gdb exits:
+
+```bash
+scripts/gdb-session.sh --tree master --attach
+```
+
+`run-qemu.sh` carries the lower-level options: `--kernel PATH` boots an
+arbitrary image, `--append STRING` adds kernel parameters, and
+`--gdb`/`--gdb-port PORT`/`--gdb-wait` control the stub (gdb adds `nokaslr`
+automatically):
+
+```bash
+scripts/run-qemu.sh --tree bpf-next --background --gdb-wait \
+    --kernel out/kernel/bpf-next-kasan/arch/x86/boot/bzImage \
+    --append "panic_on_warn=1"
 ```
 
 ## Source setup
@@ -220,8 +328,11 @@ make fetch
 - `sources/linux/<tree>/compile_commands.json`: symlink to that tree's generated compile database
 - `sources/buildroot`: Buildroot source
 - `out/kernel/<tree>`: per-worktree kernel output, including `compile_commands.json`
+- `out/kernel/<tree>-<profile>`: debug profile kernel output (`DEBUG=<profile>`)
 - `out/buildroot/qemu-x86_64`: Buildroot output
-- `out/bpf/*.bpf.o`: compiled `tests/bpf` cases
+- `out/bpf/*.bpf.o`: compiled `tests/bpf` ELF cases
+- `out/bpf/*.bin`: assembled `tests/bpf` raw cases
+- `out/bpf/bpfload`: static raw program loader, built when raw cases exist
 - `out/ssh`: the local QEMU SSH key pair
 - `out/qemu`: QEMU pid files and serial logs
 - `artifacts`: generated source and build manifests, plus collected verifier reports

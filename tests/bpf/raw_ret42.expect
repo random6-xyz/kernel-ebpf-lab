@@ -1,0 +1,4 @@
+accept
+type=socket
+run=1
+expect_ret=42

@@ -131,6 +131,23 @@ tree_path() {
     printf '%s/%s\n' "$LINUX_ROOT" "$1"
 }
 
+# Build directory for a Linux tree, optionally suffixed by a debug profile:
+# out/kernel/master or out/kernel/master-kasan.
+kernel_output_dir() {
+    local tree=$1
+    local profile=${2:-${DEBUG:-}}
+    local output="$ROOT_DIR/out/kernel/$tree"
+
+    if [[ -n "$profile" ]]; then
+        output="$output-$profile"
+    fi
+    printf '%s\n' "$output"
+}
+
+kernel_image_path() {
+    printf '%s/arch/x86/boot/bzImage\n' "$(kernel_output_dir "$@")"
+}
+
 ensure_directory() {
     mkdir -p -- "$1"
 }
