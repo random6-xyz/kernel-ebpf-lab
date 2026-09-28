@@ -1,13 +1,14 @@
 SHELL := /bin/bash
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 TREE ?= master
+DEBUG ?=
 TOOLCHAIN ?= external
 CCACHE ?= 1
 JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')
 SSH_PORT ?= 2222
 QEMU_KVM ?= auto
 
-export ROOT TREE TOOLCHAIN CCACHE JOBS SSH_PORT QEMU_KVM
+export ROOT TREE DEBUG TOOLCHAIN CCACHE JOBS SSH_PORT QEMU_KVM
 
 .PHONY: all check-host fetch bpf-object buildroot kernel compile-commands image run stop test test-smoke verifier clean distclean help
 
@@ -26,10 +27,10 @@ buildroot: bpf-object
 	$(ROOT)/scripts/build-buildroot.sh
 
 kernel:
-	$(ROOT)/scripts/build-kernel.sh --tree $(TREE)
+	$(ROOT)/scripts/build-kernel.sh --tree $(TREE) $(if $(DEBUG),--profile $(DEBUG))
 
 compile-commands:
-	$(ROOT)/scripts/gen-compile-commands.sh --tree $(TREE)
+	$(ROOT)/scripts/gen-compile-commands.sh --tree $(TREE) $(if $(DEBUG),--profile $(DEBUG))
 
 image: buildroot kernel
 
@@ -68,7 +69,7 @@ help:
 	  '  fetch                      Create Linux worktrees and fetch Buildroot' \
 	  '  bpf-object                 Build tests/bpf cases into out/bpf' \
 	  '  buildroot                  Build the QEMU root filesystem (TOOLCHAIN=external|internal, CCACHE=0 to disable ccache)' \
-	  '  kernel TREE=<name>         Build master, bpf, or bpf-next' \
+	  '  kernel TREE=<name>         Build master, bpf, or bpf-next (DEBUG=<profile> builds out/kernel/<tree>-<profile>)' \
 	  '  compile-commands TREE=<name> Generate database after a kernel build' \
 	  '  image TREE=<name>          Build rootfs and kernel' \
 	  '  run TREE=<name>            Boot QEMU with serial console' \

@@ -5,12 +5,15 @@ set -euo pipefail
 source "$(cd -- "$(dirname -- "$0")" && pwd)/lib.sh"
 
 TREE=master
+PROFILE=${DEBUG:-}
 
 usage() {
     cat <<'EOF'
-Usage: gen-compile-commands.sh [--tree master|bpf|bpf-next]
+Usage: gen-compile-commands.sh [--tree master|bpf|bpf-next] [--profile NAME]
 
-Generate compile_commands.json from an existing kernel build.
+Generate compile_commands.json from an existing kernel build. A debug profile
+generates the database inside out/kernel/<tree>-<NAME> and leaves the source
+root symlink pointing at the baseline build.
 EOF
 }
 
@@ -19,6 +22,11 @@ while (($# > 0)); do
         --tree)
             (($# >= 2)) || die "--tree requires a value"
             TREE=$2
+            shift 2
+            ;;
+        --profile)
+            (($# >= 2)) || die "--profile requires a value"
+            PROFILE=$2
             shift 2
             ;;
         -h|--help)
@@ -38,9 +46,9 @@ require_cmd python3
 SOURCE_TREE=$(tree_path "$TREE")
 [[ -f "$SOURCE_TREE/Makefile" ]] || die "Linux source is missing: $SOURCE_TREE; run make fetch first"
 
-OUTPUT="$ROOT_DIR/out/kernel/$TREE"
-[[ -f "$OUTPUT/.config" ]] || die "kernel configuration is missing for $TREE; run make kernel TREE=$TREE first"
-[[ -s "$OUTPUT/arch/x86/boot/bzImage" ]] || die "kernel image is missing for $TREE; run make kernel TREE=$TREE first"
+OUTPUT=$(kernel_output_dir "$TREE" "$PROFILE")
+[[ -f "$OUTPUT/.config" ]] || die "kernel configuration is missing for ${TREE}${PROFILE:+ ($PROFILE)}; run make kernel TREE=$TREE${PROFILE:+ DEBUG=$PROFILE} first"
+[[ -s "$OUTPUT/arch/x86/boot/bzImage" ]] || die "kernel image is missing for ${TREE}${PROFILE:+ ($PROFILE)}; run make kernel TREE=$TREE${PROFILE:+ DEBUG=$PROFILE} first"
 
 KERNEL_MAKE=(
     make -C "$SOURCE_TREE"
@@ -51,7 +59,7 @@ KERNEL_MAKE=(
 DATABASE="$OUTPUT/compile_commands.json"
 SOURCE_DATABASE="$SOURCE_TREE/compile_commands.json"
 
-log "generating compile database for $TREE"
+log "generating compile database for ${TREE}${PROFILE:+ ($PROFILE)}"
 "${KERNEL_MAKE[@]}" compile_commands.json
 [[ -s "$DATABASE" ]] || die "kernel build did not produce a non-empty database: $DATABASE"
 
@@ -74,6 +82,12 @@ if not all(
 PY
 then
     die "invalid compile database: $DATABASE"
+fi
+
+if [[ -n "$PROFILE" ]]; then
+    log "compile database: $DATABASE"
+    log "profile build: the $SOURCE_TREE/compile_commands.json symlink is left unchanged"
+    exit 0
 fi
 
 if [[ -e "$SOURCE_DATABASE" || -L "$SOURCE_DATABASE" ]]; then
