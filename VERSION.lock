@@ -8,6 +8,11 @@ LINUX_BPF_NEXT_REMOTE="https://git.kernel.org/pub/scm/linux/kernel/git/bpf/bpf-n
 BUILDROOT_REMOTE="https://gitlab.com/buildroot.org/buildroot.git"
 BUILDROOT_REF="2025.02.1"
 
+# Buildroot toolchain backend. "external" uses the prebuilt toolchain profiled
+# in configs/buildroot/toolchain-external.fragment, "internal" builds the cross
+# toolchain from source and costs about twelve extra minutes per cold build.
+BUILDROOT_TOOLCHAIN_DEFAULT="external"
+
 QEMU_SYSTEM_X86_64="qemu-system-x86_64"
 QEMU_MACHINE="pc"
 QEMU_MEMORY="1024"

@@ -1,0 +1,46 @@
+From 09cbdb1cc400b139ce07c13dec40cba3a845f3a3 Mon Sep 17 00:00:00 2001
+From: Quentin Monnet <quentin.monnet@netronome.com>
+Date: Tue, 28 Feb 2023 17:55:13 +0100
+Subject: [PATCH] bpftool: Add missing quotes to libbpf bootstrap submake vars
+
+Backport note: this is upstream bpftool commit 09cbdb1cc400 ("bpftool: Add
+missing quotes to libbpf bootstrap submake vars"). Buildroot 2025.02.1
+packages bpftool v7.1.0, which predates it, and the lab enables
+BR2_CCACHE=y, so the unquoted assignment breaks the libbpf bootstrap build:
+
+    .../host/bin/ccache: invalid option -- 'I'
+
+When passing compiler variables like CC=$(HOSTCC) to a submake we must
+ensure the variable is quoted in order to handle cases where $(HOSTCC)
+may be multiple binaries.
+
+For example, when using ccache, $HOSTCC may be:
+
+    "/usr/bin/ccache /usr/bin/gcc"
+
+If we pass CC without quotes like CC=$(HOSTCC), only the first
+"/usr/bin/ccache" part gets assigned to the CC variable, which causes an
+error due to dropping the "/usr/bin/gcc" part.
+
+Link: https://github.com/libbpf/bpftool/commit/09cbdb1cc400b139ce07c13dec40cba3a845f3a3
+Signed-off-by: Quentin Monnet <quentin.monnet@netronome.com>
+---
+ src/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/Makefile b/src/Makefile
+index 2c1b237..a0c3f36 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -51,7 +51,7 @@ $(LIBBPF_INTERNAL_HDRS): $(LIBBPF_HDRS_DIR)/%.h: $(BPF_DIR)/%.h | $(LIBBPF_HDRS_D
+ $(LIBBPF_BOOTSTRAP): $(wildcard $(BPF_DIR)/*.[ch] $(BPF_DIR)/Makefile) | $(LIBBPF_BOOTSTRAP_OUTPUT)
+ 	$(Q)$(MAKE) -C $(BPF_DIR) OBJDIR=$(patsubst %/,%,$(LIBBPF_BOOTSTRAP_OUTPUT)) \
+ 		PREFIX=$(LIBBPF_BOOTSTRAP_DESTDIR:/=) \
+-		ARCH= CROSS_COMPILE= CC=$(HOSTCC) LD=$(HOSTLD) AR=$(HOSTAR) $@ install_headers
++		ARCH= CROSS_COMPILE= CC="$(HOSTCC)" LD="$(HOSTLD)" AR="$(HOSTAR)" $@ install_headers
+ 
+ $(LIBBPF_BOOTSTRAP_INTERNAL_HDRS): $(LIBBPF_BOOTSTRAP_HDRS_DIR)/%.h: $(BPF_DIR)/%.h | $(LIBBPF_BOOTSTRAP_HDRS_DIR)
+ 	$(call QUIET_INSTALL, $@)
+-- 
+2.39.5
+

@@ -1,0 +1,9 @@
+# Fallback: build the cross toolchain from source instead of using the
+# prebuilt Bootlin toolchain. This adds roughly twelve minutes to a cold
+# build and is only useful when the prebuilt toolchain cannot be downloaded,
+# or when a package needs kernel headers newer than 4.19.
+#
+# Select it with: make buildroot TOOLCHAIN=internal
+BR2_TOOLCHAIN_BUILDROOT=y
+BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+# BR2_TOOLCHAIN_EXTERNAL is not set
