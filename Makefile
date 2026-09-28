@@ -10,7 +10,7 @@ QEMU_KVM ?= auto
 
 export ROOT TREE DEBUG TOOLCHAIN CCACHE JOBS SSH_PORT QEMU_KVM
 
-.PHONY: all check-host fetch bpf-object buildroot kernel compile-commands image run stop test test-smoke verifier clean distclean help
+.PHONY: all check-host fetch bpf-object buildroot kernel compile-commands image run gdb stop test test-smoke verifier clean distclean help
 
 all: help
 
@@ -36,6 +36,9 @@ image: buildroot kernel
 
 run: image
 	$(ROOT)/scripts/run-qemu.sh --tree $(TREE) --ssh-port $(SSH_PORT)
+
+gdb: image
+	$(ROOT)/scripts/gdb-session.sh --tree $(TREE) --ssh-port $(SSH_PORT)
 
 stop:
 	$(ROOT)/scripts/run-qemu.sh --tree $(TREE) --ssh-port $(SSH_PORT) --stop
@@ -73,6 +76,7 @@ help:
 	  '  compile-commands TREE=<name> Generate database after a kernel build' \
 	  '  image TREE=<name>          Build rootfs and kernel' \
 	  '  run TREE=<name>            Boot QEMU with serial console' \
+	  '  gdb TREE=<name>            Boot QEMU with a gdb stub and attach gdb (-S by default)' \
 	  '  test TREE=<name>           Boot QEMU and run the guest smoke test' \
 	  '  verifier TREE=<name>       Collect verifier responses for tests/bpf cases' \
 	  '  stop TREE=<name>           Stop a background QEMU instance' \
