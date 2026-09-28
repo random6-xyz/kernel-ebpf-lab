@@ -112,6 +112,11 @@ apply_fragment "$TOOLCHAIN_FRAGMENT" "$BUILDROOT_OUTPUT/.config"
 set_kconfig BR2_ROOTFS_OVERLAY "\"$EXT_ROOT/board/qemu-x86_64/rootfs-overlay\"" "$BUILDROOT_OUTPUT/.config"
 set_kconfig BR2_ROOTFS_POST_BUILD_SCRIPT "\"$EXT_ROOT/board/qemu-x86_64/post-build.sh\"" "$BUILDROOT_OUTPUT/.config"
 
+if [[ "${CCACHE:-1}" == 0 ]]; then
+    log "ccache disabled for this build (CCACHE=0)"
+    set_kconfig BR2_CCACHE n "$BUILDROOT_OUTPUT/.config"
+fi
+
 log "normalizing Buildroot configuration"
 make -C "$BUILDROOT_ROOT" \
     O="$BUILDROOT_OUTPUT" \

@@ -1,5 +1,10 @@
 BR2_x86_64=y
 # The toolchain backend is selected separately: configs/buildroot/toolchain-*.fragment.
+BR2_CCACHE=y
+BR2_CCACHE_USE_BASEDIR=y
+# The external tree carries the patches that this Buildroot release still needs,
+# for example the bpftool quoting fix required when ccache is enabled.
+BR2_GLOBAL_PATCH_DIR="board/qemu/patches $(BR2_EXTERNAL_EBPF_LAB_PATH)/patches"
 BR2_TARGET_GENERIC_HOSTNAME="ebpf-qemu"
 BR2_TARGET_GENERIC_ISSUE="eBPF lab QEMU guest"
 BR2_TARGET_GENERIC_GETTY=y
