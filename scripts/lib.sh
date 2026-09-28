@@ -42,6 +42,12 @@ BUILDROOT_ROOT="$ROOT_DIR/sources/buildroot"
 # shellcheck disable=SC2034
 BUILDROOT_OUTPUT="$ROOT_DIR/out/buildroot/qemu-x86_64"
 # shellcheck disable=SC2034
+BUILDROOT_FRAGMENT_DIR="$ROOT_DIR/configs/buildroot"
+# Toolchain identity of BUILDROOT_OUTPUT, used to refuse a toolchain switch on a
+# directory that was built with another one.
+# shellcheck disable=SC2034
+BUILDROOT_STATE_FILE="$BUILDROOT_OUTPUT/.ebpf-lab-buildroot-state"
+# shellcheck disable=SC2034
 SSH_OUTPUT="$ROOT_DIR/out/ssh"
 # shellcheck disable=SC2034
 QEMU_OUTPUT="$ROOT_DIR/out/qemu"
@@ -72,6 +78,41 @@ number_of_jobs() {
         printf '%s\n' "$JOBS"
     else
         getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1\n'
+    fi
+}
+
+# Buildroot toolchain backend: "external" (prebuilt) or "internal" (built from
+# source). Selected by TOOLCHAIN, defaulting to BUILDROOT_TOOLCHAIN_DEFAULT.
+buildroot_toolchain() {
+    printf '%s\n' "${TOOLCHAIN:-$BUILDROOT_TOOLCHAIN_DEFAULT}"
+}
+
+buildroot_toolchain_fragment() {
+    case "$(buildroot_toolchain)" in
+        external)
+            printf '%s\n' "$BUILDROOT_FRAGMENT_DIR/toolchain-external.fragment"
+            ;;
+        internal)
+            printf '%s\n' "$BUILDROOT_FRAGMENT_DIR/toolchain-internal.fragment"
+            ;;
+        *)
+            die "invalid TOOLCHAIN '$(buildroot_toolchain)'; expected external or internal"
+            ;;
+    esac
+}
+
+# Identity of the selected toolchain, recorded in the output directory so that
+# changing the profile (for example stable to bleeding-edge) is detected too.
+buildroot_toolchain_profile() {
+    local fragment
+    local profile
+
+    fragment=$(buildroot_toolchain_fragment)
+    profile=$(sed -n 's/^\(BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_[A-Z0-9_]*\)=y$/\1/p' "$fragment" 2>/dev/null | head -n 1)
+    if [[ -n "$profile" ]]; then
+        printf '%s\n' "${profile#BR2_TOOLCHAIN_EXTERNAL_BOOTLIN_}"
+    else
+        printf '%s\n' "$(buildroot_toolchain)"
     fi
 }
 
@@ -139,6 +180,49 @@ write_source_manifest() {
                 git -C "$path" remote -v | sort -u | sed 's/^/remote=/'
             fi
         done
+    } > "$manifest"
+    log "wrote $manifest"
+}
+
+write_buildroot_toolchain_manifest() {
+    local mode=$1
+    local profile=$2
+    local manifest="$ARTIFACTS_OUTPUT/buildroot-toolchain.txt"
+    local config="$BUILDROOT_OUTPUT/.config"
+    local compiler
+    local compiler_line=unknown
+    local headers
+    local ccache_enabled=no
+    local ccache_line=disabled
+
+    ensure_directory "$ARTIFACTS_OUTPUT"
+
+    compiler=$(find "$BUILDROOT_OUTPUT/host/bin" -maxdepth 1 -name '*-gcc' ! -name '*-gcc-[0-9]*' -print -quit 2>/dev/null || true)
+    if [[ -n "$compiler" ]]; then
+        compiler_line=$("$compiler" --version 2>/dev/null | head -n 1 || true)
+    fi
+    [[ -n "$compiler_line" ]] || compiler_line=unknown
+
+    headers=$(sed -n 's/^BR2_TOOLCHAIN_HEADERS_AT_LEAST_\([0-9]*\)_\([0-9]*\)=y$/\1.\2/p' "$config" | sort -t. -k1,1n -k2,2n | tail -n 1)
+
+    if grep -q '^BR2_CCACHE=y$' "$config"; then
+        ccache_enabled=yes
+        # Buildroot builds its own patched ccache into the host directory; the
+        # system ccache, if any, is not used.
+        ccache_line=$("$BUILDROOT_OUTPUT/host/bin/ccache" --version 2>/dev/null | head -n 1 || true)
+        [[ -n "$ccache_line" ]] || ccache_line=unknown
+    fi
+
+    {
+        printf '# Generated Buildroot toolchain manifest\n'
+        printf 'generated_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf 'buildroot_ref=%s\n' "${BUILDROOT_REF:-unknown}"
+        printf 'toolchain_mode=%s\n' "$mode"
+        printf 'toolchain_profile=%s\n' "$profile"
+        printf 'kernel_headers=%s\n' "${headers:-unknown}"
+        printf 'ccache_enabled=%s\n' "$ccache_enabled"
+        printf 'ccache_version=%s\n' "$ccache_line"
+        printf 'compiler=%s\n' "$compiler_line"
     } > "$manifest"
     log "wrote $manifest"
 }
